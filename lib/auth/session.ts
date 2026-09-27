@@ -151,8 +151,9 @@ export async function login(email: string, password: string): Promise<LoginResul
         }
       }
     } catch (err) {
-      console.error("[nexora:auth] supabase login failed, falling back to local", err);
+      console.error("[nexora:auth] supabase login failed", err);
     }
+    return { ok: false, error: "Authentication provider unavailable or account not provisioned." };
   }
 
   const user = await db.findOne("users", { email: normalized });

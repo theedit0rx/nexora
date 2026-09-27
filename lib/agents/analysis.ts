@@ -1,3 +1,5 @@
+import { fetchPublicPage } from "../security/public-web";
+import { tenantById } from "../db/tenant";
 import { db, newId } from "../db";
 import { nowIso, type Lead, type ResearchReport, type WebsiteAudit } from "../db/schema";
 import { bus, logActivity } from "../events/bus";
@@ -23,12 +25,12 @@ export async function researcherAnalyze(
     { organizationId, agentKey: "researcher", trigger },
     "research.business",
     async (task) => {
-      const lead = await db.byId("leads", leadId);
+      const lead = await tenantById(organizationId, "leads", leadId);
       if (!lead) throw new Error(`Lead ${leadId} not found`);
-      const business = await db.byId("businesses", lead.businessId);
+      const business = await tenantById(organizationId, "businesses", lead.businessId);
       if (!business) throw new Error(`Business for lead ${leadId} not found`);
 
-      await markAgentWorking("researcher", task.id, `Researching ${business.name}`);
+      await markAgentWorking(organizationId, "researcher", task.id, `Researching ${business.name}`);
       const profile = categoryProfile(business.category);
 
       // Fetch the site (if any) so online-presence claims are evidence-based.
@@ -99,7 +101,7 @@ export async function researcherAnalyze(
         status: "OK",
       });
       await bus.emit("lead.research.completed", { organizationId, leadId, businessId: business.id });
-      await markAgentIdle("researcher");
+      await markAgentIdle(organizationId, "researcher");
 
       return { reportId: report.id, summary: report.summary };
     },
@@ -132,19 +134,8 @@ export async function fetchSite(url: string | null | undefined, timeoutMs = 8000
   const target = url.startsWith("http") ? url : `https://${url}`;
   const started = Date.now();
   try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
-    const res = await fetch(target, {
-      signal: controller.signal,
-      redirect: "follow",
-      headers: {
-        "user-agent":
-          "Mozilla/5.0 (compatible; NEXORA-AuditBot/1.0; +https://nexora.local/bot)",
-        accept: "text/html,application/xhtml+xml",
-      },
-    });
-    clearTimeout(timer);
-    const html = await res.text().catch(() => "");
+    const res = await fetchPublicPage(target, { timeoutMs });
+    const html = res.html;
     return {
       reachable: res.ok,
       statusCode: res.status,
@@ -175,12 +166,12 @@ export async function auditorAudit(
     { organizationId, agentKey: "auditor", trigger },
     "audit.website",
     async (task) => {
-      const lead = await db.byId("leads", leadId);
+      const lead = await tenantById(organizationId, "leads", leadId);
       if (!lead) throw new Error(`Lead ${leadId} not found`);
-      const business = await db.byId("businesses", lead.businessId);
+      const business = await tenantById(organizationId, "businesses", lead.businessId);
       if (!business) throw new Error(`Business for lead ${leadId} not found`);
 
-      await markAgentWorking("auditor", task.id, `Auditing ${business.website ?? "no website"}`);
+      await markAgentWorking(organizationId, "auditor", task.id, `Auditing ${business.website ?? "no website"}`);
       const site = await fetchSite(business.website);
 
       const audit = await analyzeWebsite(
@@ -210,7 +201,7 @@ export async function auditorAudit(
         status: audit.findings.some((f) => f.severity === "CRITICAL") ? "WARN" : "OK",
       });
       await bus.emit("lead.audit.completed", { organizationId, leadId, auditId: audit.id });
-      await markAgentIdle("auditor");
+      await markAgentIdle(organizationId, "auditor");
 
       return { auditId: audit.id, grade: audit.overallGrade, findings: audit.findings.length };
     },
@@ -348,10 +339,7 @@ async function analyzeWebsite(
       try {
         const abs = new URL(href, site.finalUrl);
         if (abs.origin !== new URL(site.finalUrl).origin) continue;
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), 5000);
-        const res = await fetch(abs.toString(), { method: "HEAD", signal: controller.signal });
-        clearTimeout(timer);
+        const res = await fetchPublicPage(abs.toString(), { method: "HEAD", timeoutMs: 5000 });
         if (res.status >= 400) brokenPages.push(`${href} (${res.status})`);
       } catch {
         /* network-restricted environments: do not claim a page is broken */
@@ -655,13 +643,13 @@ export async function scorerScore(
     { organizationId, agentKey: "scorer", trigger },
     "score.opportunity",
     async (task) => {
-      const lead = await db.byId("leads", leadId);
+      const lead = await tenantById(organizationId, "leads", leadId);
       if (!lead) throw new Error(`Lead ${leadId} not found`);
-      const business = await db.byId("businesses", lead.businessId);
+      const business = await tenantById(organizationId, "businesses", lead.businessId);
       if (!business) throw new Error(`Business for lead ${leadId} not found`);
       const audit = (await db.find("website_audits", { leadId })).at(-1) ?? null;
 
-      await markAgentWorking("scorer", task.id, `Scoring ${business.name}`);
+      await markAgentWorking(organizationId, "scorer", task.id, `Scoring ${business.name}`);
 
       const factors = computeFactors({ ...business, reviewCount: business.reviewCount ?? 0 }, audit, lead);
       const total = Math.round(
@@ -728,7 +716,7 @@ export async function scorerScore(
         score: score.total,
         priority,
       });
-      await markAgentIdle("scorer");
+      await markAgentIdle(organizationId, "scorer");
 
       return { scoreId: score.id, total: score.total, priority };
     },

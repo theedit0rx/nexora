@@ -151,6 +151,15 @@ export async function runTask<T>(
     maxRetries: opts.maxRetries,
   });
 
+  const [settings, agent] = await Promise.all([
+    db.findOne("settings", { organizationId: ctx.organizationId }),
+    db.findOne("agent_definitions", { organizationId: ctx.organizationId, key: ctx.agentKey }),
+  ]);
+  if (settings?.autonomy.paused || agent?.paused) {
+    const error = settings?.autonomy.paused ? "Workspace automation is paused" : "Agent is paused";
+    return { ok: false, error, task: await blockTask(task.id, error) };
+  }
+
   const run = {
     id: newId("run"),
     organizationId: ctx.organizationId,
@@ -186,7 +195,7 @@ export async function runTask<T>(
       tokensOut: (output.__tokensOut as number) ?? 0,
       costUsd: (output.__costUsd as number) ?? 0,
     });
-    await recordAgentSuccess(ctx.agentKey, durationMs);
+    await recordAgentSuccess(ctx.organizationId, ctx.agentKey, durationMs);
     await logActivity({
       organizationId: ctx.organizationId,
       agentKey: ctx.agentKey,
@@ -208,7 +217,7 @@ export async function runTask<T>(
       durationMs,
       completedAt: new Date().toISOString(),
     });
-    await recordAgentFailure(ctx.agentKey, durationMs);
+    await recordAgentFailure(ctx.organizationId, ctx.agentKey, durationMs);
     await logActivity({
       organizationId: ctx.organizationId,
       agentKey: ctx.agentKey,
@@ -245,8 +254,8 @@ export function agentLabel(key: AgentKey): string {
   return labels[key] ?? key;
 }
 
-async function recordAgentSuccess(agentKey: AgentKey, durationMs: number) {
-  const def = await db.findOne("agent_definitions", { key: agentKey });
+async function recordAgentSuccess(organizationId: string, agentKey: AgentKey, durationMs: number) {
+  const def = await db.findOne("agent_definitions", { organizationId, key: agentKey });
   if (!def) return;
   const total = def.runsToday;
   const rate = (def.successRate * total + 1) / (total + 1);
@@ -262,8 +271,8 @@ async function recordAgentSuccess(agentKey: AgentKey, durationMs: number) {
   });
 }
 
-async function recordAgentFailure(agentKey: AgentKey, durationMs: number) {
-  const def = await db.findOne("agent_definitions", { key: agentKey });
+async function recordAgentFailure(organizationId: string, agentKey: AgentKey, durationMs: number) {
+  const def = await db.findOne("agent_definitions", { organizationId, key: agentKey });
   if (!def) return;
   const total = def.runsToday;
   const rate = (def.successRate * total + 0) / (total + 1);
@@ -280,11 +289,12 @@ async function recordAgentFailure(agentKey: AgentKey, durationMs: number) {
 }
 
 export async function markAgentWorking(
+  organizationId: string,
   agentKey: AgentKey,
   taskId: string | null,
   label: string | null,
 ) {
-  const def = await db.findOne("agent_definitions", { key: agentKey });
+  const def = await db.findOne("agent_definitions", { organizationId, key: agentKey });
   if (!def) return;
   if (def.paused) return;
   await db.update("agent_definitions", def.id, {
@@ -294,14 +304,14 @@ export async function markAgentWorking(
   });
 }
 
-export async function markAgentWaiting(agentKey: AgentKey, label: string) {
-  const def = await db.findOne("agent_definitions", { key: agentKey });
+export async function markAgentWaiting(organizationId: string, agentKey: AgentKey, label: string) {
+  const def = await db.findOne("agent_definitions", { organizationId, key: agentKey });
   if (!def) return;
   await db.update("agent_definitions", def.id, { state: "WAITING", currentTaskLabel: label });
 }
 
-export async function markAgentIdle(agentKey: AgentKey) {
-  const def = await db.findOne("agent_definitions", { key: agentKey });
+export async function markAgentIdle(organizationId: string, agentKey: AgentKey) {
+  const def = await db.findOne("agent_definitions", { organizationId, key: agentKey });
   if (!def) return;
   await db.update("agent_definitions", def.id, {
     state: def.paused ? "PAUSED" : "IDLE",

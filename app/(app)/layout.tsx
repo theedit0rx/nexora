@@ -3,7 +3,7 @@ import { AppShell } from "@/components/shell/app-shell";
 import { requireAuth } from "@/lib/auth/session";
 import { db } from "@/lib/db";
 import { computeSystemHealth } from "@/lib/metrics";
-import { bootstrapPrimary } from "@/lib/bootstrap";
+import { ensureIntegrations, ensureServicesAndPricing } from "@/lib/bootstrap";
 import { registerSupervisor } from "@/lib/workflows/pipeline";
 import { NAV_ITEMS } from "@/components/shell/sidebar";
 
@@ -22,7 +22,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   // First-run bootstrap for the primary workspace.
   if (!session.isDemo) {
-    await bootstrapPrimary().catch((err) => console.error("[nexora] bootstrap failed", err));
+    await ensureServicesAndPricing(organizationId);
+    await ensureIntegrations(organizationId);
   }
 
   // Wire the supervisor to workflow events (idempotent per process).

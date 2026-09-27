@@ -1,3 +1,4 @@
+import { tenantById } from "../db/tenant";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { db, newId, slugify } from "../db";
@@ -64,14 +65,14 @@ export async function strategistPlan(
     { organizationId, agentKey: "strategist", trigger },
     "strategy.generate",
     async (task) => {
-      const lead = await db.byId("leads", leadId);
+      const lead = await tenantById(organizationId, "leads", leadId);
       if (!lead) throw new Error(`Lead ${leadId} not found`);
-      const business = await db.byId("businesses", lead.businessId);
+      const business = await tenantById(organizationId, "businesses", lead.businessId);
       if (!business) throw new Error(`Business for lead ${leadId} not found`);
       const audit = (await db.find("website_audits", { leadId })).at(-1) ?? null;
       const report = (await db.find("research_reports", { leadId })).at(-1) ?? null;
 
-      await markAgentWorking("strategist", task.id, `Planning site for ${business.name}`);
+      await markAgentWorking(organizationId, "strategist", task.id, `Planning site for ${business.name}`);
 
       const family = templateFamilyFor(business.category);
       const theme = pickTheme(business.category, "light");
@@ -153,7 +154,7 @@ export async function strategistPlan(
         status: "OK",
       });
       await bus.emit("strategy.generated", { organizationId, leadId, strategyId: strategy.id });
-      await markAgentIdle("strategist");
+      await markAgentIdle(organizationId, "strategist");
 
       return { strategyId: strategy.id, templateFamily: family.key, pages: strategy.pages };
     },
@@ -228,9 +229,9 @@ export async function builderBuildDemo(
     { organizationId, agentKey: "builder", trigger },
     "demo.build",
     async (task) => {
-      const lead = await db.byId("leads", leadId);
+      const lead = await tenantById(organizationId, "leads", leadId);
       if (!lead) throw new Error(`Lead ${leadId} not found`);
-      const business = await db.byId("businesses", lead.businessId);
+      const business = await tenantById(organizationId, "businesses", lead.businessId);
       if (!business) throw new Error(`Business for lead ${leadId} not found`);
 
       const strategies = await db.find("strategies", { leadId });
@@ -238,7 +239,7 @@ export async function builderBuildDemo(
         (opts.strategyId ? strategies.find((s) => s.id === opts.strategyId) : null) ?? strategies.at(-1) ?? null;
       if (!strategy) throw new Error("No website strategy exists for this lead — run the Strategist first");
 
-      await markAgentWorking("builder", task.id, `Generating demo for ${business.name}`);
+      await markAgentWorking(organizationId, "builder", task.id, `Generating demo for ${business.name}`);
 
       const themeKey = strategy.theme.palette;
       const theme = THEMES[themeKey] ?? pickTheme(business.category, "light");
@@ -258,7 +259,7 @@ export async function builderBuildDemo(
         mapsUrl: business.mapsUrl,
       });
 
-      const slug = `${slugify(business.name)}-${slugify(business.city || "local")}`.slice(0, 60) || `demo-${leadId.slice(0, 6)}`;
+      const slug = `${organizationId}-${leadId}-${slugify(business.name).slice(0, 35)}`;
       const result = writeSite({
         slug,
         business: content,
@@ -268,7 +269,7 @@ export async function builderBuildDemo(
         outputRoot: SITE_ROOT(),
       });
 
-      const existing = await db.findOne("demo_sites", { slug });
+      const existing = await db.findOne("demo_sites", { organizationId, slug });
       const demoSite: DemoSite = {
         id: existing?.id ?? newId("dem"),
         organizationId,
@@ -308,7 +309,7 @@ export async function builderBuildDemo(
         meta: { slug, pages: result.pages },
       });
       await bus.emit("demo.completed", { organizationId, leadId, demoId: demoSite.id, slug });
-      await markAgentIdle("builder");
+      await markAgentIdle(organizationId, "builder");
 
       return {
         demoId: demoSite.id,
@@ -343,19 +344,19 @@ export async function qaRun(
       let entityLeadId: string | undefined;
 
       if (targetType === "DEMO") {
-        const demo = await db.byId("demo_sites", targetId);
+        const demo = await tenantById(organizationId, "demo_sites", targetId);
         if (!demo) throw new Error(`Demo site ${targetId} not found`);
         label = demo.businessName;
         entityLeadId = demo.leadId;
         files = readDirFiles(demo.outputDir);
       } else {
-        const build = await db.byId("website_builds", targetId);
+        const build = await tenantById(organizationId, "website_builds", targetId);
         if (!build) throw new Error(`Build ${targetId} not found`);
         label = build.id;
         files = readDirFiles(build.outputDir);
       }
 
-      await markAgentWorking("qa", task.id, `Inspecting ${label}`);
+      await markAgentWorking(organizationId, "qa", task.id, `Inspecting ${label}`);
       const run = runQa({ organizationId, targetType, targetId, label, files });
       await db.insert("qa_runs", run);
 
@@ -399,7 +400,7 @@ export async function qaRun(
         await bus.emit("qa.passed", { organizationId, targetType, targetId, score: run.score, verdict: run.verdict });
       }
 
-      await markAgentIdle("qa");
+      await markAgentIdle(organizationId, "qa");
       return {
         qaRunId: run.id,
         verdict: run.verdict,
@@ -435,20 +436,20 @@ export async function deployerDeploy(
       let projectId: string | null = null;
 
       if (targetType === "DEMO") {
-        const demo = await db.byId("demo_sites", targetId);
+        const demo = await tenantById(organizationId, "demo_sites", targetId);
         if (!demo) throw new Error(`Demo site ${targetId} not found`);
         outputDir = demo.outputDir;
         name = demo.slug;
       } else {
-        const build = await db.byId("website_builds", targetId);
+        const build = await tenantById(organizationId, "website_builds", targetId);
         if (!build) throw new Error(`Build ${targetId} not found`);
         outputDir = build.outputDir;
         name = build.id;
         projectId = build.projectId;
       }
 
-      await markAgentWorking("deployer", task.id, `Deploying ${name}`);
-      const provider = getDeploymentProvider();
+      await markAgentWorking(organizationId, "deployer", task.id, `Deploying ${name}`);
+      const provider = getDeploymentProvider(kind);
       const files = readDirFiles(outputDir);
       const res = await provider.deploy({ name, kind, files });
 
@@ -459,14 +460,14 @@ export async function deployerDeploy(
         targetId,
         projectId,
         kind,
-        state: res.ok ? "READY" : "ERROR",
+        state: !res.ok ? "ERROR" : res.state === "READY" ? "READY" : res.state === "BUILDING" ? "BUILDING" : "QUEUED",
         url: res.url ?? "",
         provider: provider.key,
         providerRef: res.ref ?? "",
         branch: kind === "PRODUCTION" ? "main" : "preview",
         commitSha: "",
         buildLog: res.error ?? (res.ok ? `Deployed via ${provider.label}` : ""),
-        healthCheck: res.ok ? "HEALTHY" : "DOWN",
+        healthCheck: res.ok ? "UNKNOWN" : "DOWN",
         customDomain: null,
         createdAt: nowIso(),
         updatedAt: nowIso(),
@@ -474,9 +475,9 @@ export async function deployerDeploy(
       await db.insert("deployments", deployment);
 
       if (targetType === "DEMO") {
-        await db.update("demo_sites", targetId, { status: res.ok ? "DEPLOYED" : "FAILED" });
+        await db.update("demo_sites", targetId, { status: res.ok && res.state === "READY" ? "DEPLOYED" : res.ok ? "GENERATED" : "FAILED" });
       }
-      if (projectId) {
+      if (projectId && res.ok && res.state === "READY") {
         await db.update("projects", projectId, {
           ...(kind === "PRODUCTION" ? { productionUrl: deployment.url } : { previewUrl: deployment.url }),
           updatedAt: nowIso(),
@@ -486,9 +487,9 @@ export async function deployerDeploy(
       await logActivity({
         organizationId,
         agentKey: "deployer",
-        actionType: res.ok ? "deployment.completed" : "deployment.failed",
+        actionType: res.ok ? (res.state === "READY" ? "deployment.completed" : "deployment.queued") : "deployment.failed",
         title: res.ok
-          ? `${kind === "PRODUCTION" ? "Production" : "Preview"} deployment completed for ${name}`
+          ? `${kind === "PRODUCTION" ? "Production" : "Preview"} deployment ${res.state === "READY" ? "completed" : "queued"} for ${name}`
           : `Deployment failed for ${name}`,
         detail: res.error ?? deployment.url,
         entityType: "deployment",
@@ -508,10 +509,10 @@ export async function deployerDeploy(
           severity: "DANGER",
         });
         await bus.emit("deployment.failed", { organizationId, targetType, targetId, error: res.error });
-      } else {
+      } else if (res.state === "READY") {
         await bus.emit("deployment.completed", { organizationId, targetType, targetId, url: deployment.url });
       }
-      await markAgentIdle("deployer");
+      await markAgentIdle(organizationId, "deployer");
 
       return { deploymentId: deployment.id, url: deployment.url, provider: provider.key, state: deployment.state };
     },

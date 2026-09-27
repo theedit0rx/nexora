@@ -86,6 +86,7 @@ export async function computeDashboard(organizationId: string): Promise<Dashboar
     db.find("approval_requests", { organizationId }),
     db.find("activity_events", { organizationId }),
     db.find("website_builds", { organizationId }),
+      db.find("website_audits", { organizationId }),
   ]);
 
   const paid = revenue.filter((r) => r.status === "PAID");
@@ -242,7 +243,7 @@ export interface Analytics {
 }
 
 export async function computeAnalytics(organizationId: string): Promise<Analytics> {
-  const [leads, businesses, outreach, proposals, projects, clients, agents, revenue, demos, builds] =
+  const [leads, businesses, outreach, proposals, projects, clients, agents, revenue, demos, builds, audits] =
     await Promise.all([
       db.find("leads", { organizationId }),
       db.find("businesses", { organizationId }),
@@ -254,12 +255,13 @@ export async function computeAnalytics(organizationId: string): Promise<Analytic
       db.find("revenue_events", { organizationId }),
       db.find("demo_sites", { organizationId }),
       db.find("website_builds", { organizationId }),
+      db.find("website_audits", { organizationId }),
     ]);
 
   const businessById = new Map(businesses.map((b) => [b.id, b]));
   const leadById = new Map(leads.map((l) => [l.id, l]));
 
-  const funnel = computeFunnel({ leads, audits: [], demos, outreach, proposals, projects });
+  const funnel = computeFunnel({ leads, audits, demos, outreach, proposals, projects });
 
   const conversionFunnel = funnel.map((f, i) => ({
     ...f,

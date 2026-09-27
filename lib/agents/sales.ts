@@ -1,3 +1,4 @@
+import { tenantById } from "../db/tenant";
 import { join } from "node:path";
 import { db, newId, slugify } from "../db";
 import {
@@ -43,18 +44,18 @@ export async function outreachDraft(
     { organizationId, agentKey: "outreach", trigger },
     "outreach.draft",
     async (task) => {
-      const lead = await db.byId("leads", input.leadId);
+      const lead = await tenantById(organizationId, "leads", input.leadId);
       if (!lead) throw new Error(`Lead ${input.leadId} not found`);
       if (lead.optOut || lead.suppressed) throw new Error("This lead is on the suppression list — outreach is blocked.");
 
-      const business = await db.byId("businesses", lead.businessId);
+      const business = await tenantById(organizationId, "businesses", lead.businessId);
       if (!business) throw new Error(`Business for lead ${input.leadId} not found`);
       const audit = (await db.find("website_audits", { leadId: lead.id })).at(-1) ?? null;
       const report = (await db.find("research_reports", { leadId: lead.id })).at(-1) ?? null;
       const score = (await db.find("lead_scores", { leadId: lead.id })).at(-1) ?? null;
       const demo = (await db.find("demo_sites", { leadId: lead.id })).at(-1) ?? null;
 
-      await markAgentWorking("outreach", task.id, `Drafting message for ${business.name}`);
+      await markAgentWorking(organizationId, "outreach", task.id, `Drafting message for ${business.name}`);
 
       // Duplicate prevention: do not draft twice for the same lead+channel in flight.
       const prior = await db.find("outreach_messages", { leadId: lead.id });
@@ -62,7 +63,7 @@ export async function outreachDraft(
         (m) => m.channel === (input.channel ?? "EMAIL") && ["DRAFT", "WAITING_APPROVAL", "QUEUED"].includes(m.status),
       );
       if (inFlight) {
-        await markAgentIdle("outreach");
+        await markAgentIdle(organizationId, "outreach");
         return {
           messageId: inFlight.id,
           status: inFlight.status,
@@ -142,7 +143,7 @@ export async function outreachDraft(
         riskLevel: "MEDIUM",
       });
       await bus.emit("outreach.prepared", { organizationId, leadId: lead.id, messageId: message.id });
-      await markAgentIdle("outreach");
+      await markAgentIdle(organizationId, "outreach");
 
       return { messageId: message.id, status: message.status, subject, body, personalization };
     },
@@ -238,9 +239,9 @@ export async function outreachSend(
   messageId: string,
   opts: { approved?: boolean } = {},
 ) {
-  const message = await db.byId("outreach_messages", messageId);
+  const message = await tenantById(organizationId, "outreach_messages", messageId);
   if (!message) throw new Error(`Outreach message ${messageId} not found`);
-  const lead = await db.byId("leads", message.leadId);
+  const lead = await tenantById(organizationId, "leads", message.leadId);
   if (!lead) throw new Error("Lead not found");
   if (lead.optOut || lead.suppressed) throw new Error("Lead is suppressed — send blocked.");
 
@@ -374,12 +375,12 @@ export async function salesHandleInbound(
     { organizationId, agentKey: "sales", trigger },
     "sales.classify",
     async (task) => {
-      const message = await db.byId("messages", messageId);
+      const message = await tenantById(organizationId, "messages", messageId);
       if (!message) throw new Error(`Message ${messageId} not found`);
-      const conversation = await db.byId("conversations", conversationId);
+      const conversation = await tenantById(organizationId, "conversations", conversationId);
       if (!conversation) throw new Error(`Conversation ${conversationId} not found`);
 
-      await markAgentWorking("sales", task.id, "Classifying inbound message");
+      await markAgentWorking(organizationId, "sales", task.id, "Classifying inbound message");
       const { intent, confidence } = classifyMessage(message.body);
 
       const updated = await db.update("messages", messageId, {
@@ -400,7 +401,7 @@ export async function salesHandleInbound(
         updatedAt: nowIso(),
       });
 
-      const lead = conversation.leadId ? await db.byId("leads", conversation.leadId) : null;
+      const lead = conversation.leadId ? await tenantById(organizationId, "leads", conversation.leadId) : null;
       if (lead) {
         const statusByIntent: Record<string, "REPLIED" | "INTERESTED" | "LOST"> = {
           INTERESTED: "INTERESTED",
@@ -452,7 +453,7 @@ export async function salesHandleInbound(
       if (intent === "INTERESTED") {
         await bus.emit("lead.interested", { organizationId, conversationId, messageId, intent });
       }
-      await markAgentIdle("sales");
+      await markAgentIdle(organizationId, "sales");
 
       return { intent, confidence, suggestedReply: updated.suggestedReply };
     },
@@ -498,15 +499,15 @@ export async function proposalGenerate(
     { organizationId, agentKey: "proposal", trigger },
     "proposal.generate",
     async (task) => {
-      const lead = await db.byId("leads", leadId);
+      const lead = await tenantById(organizationId, "leads", leadId);
       if (!lead) throw new Error(`Lead ${leadId} not found`);
-      const business = await db.byId("businesses", lead.businessId);
+      const business = await tenantById(organizationId, "businesses", lead.businessId);
       if (!business) throw new Error(`Business for lead ${leadId} not found`);
       const strategy = (await db.find("strategies", { leadId })).at(-1) ?? null;
       const audit = (await db.find("website_audits", { leadId })).at(-1) ?? null;
       const report = (await db.find("research_reports", { leadId })).at(-1) ?? null;
 
-      await markAgentWorking("proposal", task.id, `Generating proposal for ${business.name}`);
+      await markAgentWorking(organizationId, "proposal", task.id, `Generating proposal for ${business.name}`);
 
       let services = await db.find("services", { organizationId });
       if (services.length === 0) services = DEFAULT_SERVICES.map((s) => ({ ...s, id: newId("svc"), organizationId, createdAt: nowIso(), updatedAt: nowIso() }));
@@ -613,7 +614,7 @@ export async function proposalGenerate(
         riskLevel: quote.discountApprovalRequired ? "HIGH" : "MEDIUM",
       });
       await bus.emit("proposal.generated", { organizationId, leadId, proposalId: proposal.id });
-      await markAgentIdle("proposal");
+      await markAgentIdle(organizationId, "proposal");
 
       return {
         proposalId: proposal.id,
@@ -699,15 +700,15 @@ export async function productionBuild(
     { organizationId, agentKey: "production_builder", trigger },
     "production.build",
     async (task) => {
-      const project = await db.byId("projects", projectId);
+      const project = await tenantById(organizationId, "projects", projectId);
       if (!project) throw new Error(`Project ${projectId} not found`);
-      const client = await db.byId("clients", project.clientId);
+      const client = await tenantById(organizationId, "clients", project.clientId);
       if (!client) throw new Error(`Client for project ${projectId} not found`);
-      const business = client.businessId ? await db.byId("businesses", client.businessId) : null;
-      const strategy = project.strategyId ? await db.byId("strategies", project.strategyId) : null;
+      const business = client.businessId ? await tenantById(organizationId, "businesses", client.businessId) : null;
+      const strategy = project.strategyId ? await tenantById(organizationId, "strategies", project.strategyId) : null;
       const onboarding = (await db.find("onboarding_submissions", { clientId: client.id })).at(-1) ?? null;
 
-      await markAgentWorking("production_builder", task.id, `Building ${project.name}`);
+      await markAgentWorking(organizationId, "production_builder", task.id, `Building ${project.name}`);
 
       const themeKey = strategy?.theme.palette ?? "indigo";
       const theme = THEMES[themeKey] ?? THEMES.indigo!;
@@ -728,7 +729,7 @@ export async function productionBuild(
         services: onboarding?.data.services?.length ? onboarding.data.services : strategy?.sections.map((s) => s.heading) ?? [],
       });
 
-      const slug = project.slug;
+      const slug = `${organizationId}-${projectId}-${newId("artifact")}`;
       const result = writeSite({
         slug,
         business: content,
@@ -776,7 +777,7 @@ export async function productionBuild(
         status: "OK",
       });
       await bus.emit("project.started", { organizationId, projectId, buildId: build.id });
-      await markAgentIdle("production_builder");
+      await markAgentIdle(organizationId, "production_builder");
 
       return { buildId: build.id, version, pages: result.pages, files: result.files.length };
     },
@@ -818,9 +819,9 @@ export async function supportTriage(
     { organizationId, agentKey: "support", trigger },
     "support.triage",
     async (task) => {
-      const ticket = await db.byId("support_tickets", ticketId);
+      const ticket = await tenantById(organizationId, "support_tickets", ticketId);
       if (!ticket) throw new Error(`Ticket ${ticketId} not found`);
-      await markAgentWorking("support", task.id, `Triaging: ${ticket.subject}`);
+      await markAgentWorking(organizationId, "support", task.id, `Triaging: ${ticket.subject}`);
 
       const category = categorizeTicket(`${ticket.subject} ${ticket.description}`);
       const isFeature = category === "new feature";
@@ -873,7 +874,7 @@ export async function supportTriage(
         clientId: ticket.clientId,
         status: "OK",
       });
-      await markAgentIdle("support");
+      await markAgentIdle(organizationId, "support");
       return { ticketId, category, isUpsell: isFeature, status: updated.status };
     },
     { entityType: "ticket", entityId: ticketId, input: { ticketId } },

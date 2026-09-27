@@ -449,6 +449,7 @@ class LocalDeploymentProvider implements DeploymentProvider {
   requiredEnv: string[] = [];
   capabilities = ["preview deployment", "deployment URL", "deployment history"];
   async deploy(input: { name: string; kind: "PREVIEW" | "PRODUCTION"; files: Array<{ path: string }> }) {
+    if (input.kind === "PRODUCTION") return { ok: false, error: "Local previews cannot be production deployments." };
     return {
       ok: true,
       url: `/generated/${input.name}/index.html`,
@@ -469,9 +470,9 @@ class DeploymentUnavailable implements DeploymentProvider {
   }
 }
 
-export function getDeploymentProvider(): DeploymentProvider {
+export function getDeploymentProvider(kind: "PREVIEW" | "PRODUCTION" = "PREVIEW"): DeploymentProvider {
   if (process.env.VERCEL_TOKEN && process.env.VERCEL_PROJECT_ID) return new VercelProvider();
-  return new LocalDeploymentProvider();
+  return kind === "PRODUCTION" ? new DeploymentUnavailable() : new LocalDeploymentProvider();
 }
 
 /* -------------------------------------------------------------- PAYMENTS -- */

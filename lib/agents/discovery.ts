@@ -50,7 +50,7 @@ export async function scoutDiscover(
     { organizationId, agentKey: "scout", trigger },
     "discover.businesses",
     async (task) => {
-      await markAgentWorking("scout", task.id, `Scanning ${input.category} in ${input.city}`);
+      await markAgentWorking(organizationId, "scout", task.id, `Scanning ${input.category} in ${input.city}`);
 
       let discovered: DiscoveredBusiness[] = [];
       let source = input.source ?? "auto";
@@ -129,7 +129,7 @@ export async function scoutDiscover(
         });
       }
 
-      await markAgentIdle("scout");
+      await markAgentIdle(organizationId, "scout");
 
       const result: ScoutResult = {
         discovered: discovered.length,
