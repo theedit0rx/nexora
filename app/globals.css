@@ -1,0 +1,236 @@
+@import "tailwindcss";
+
+/* ==========================================================================
+   NEXORA — Design System
+   Dark-first, premium, technical, executive.
+   ========================================================================== */
+
+@theme {
+  /* ---- Base surfaces ---- */
+  --color-base: #07090d;
+  --color-surface: #0d1117;
+  --color-surface-1: #0d1117;
+  --color-surface-2: #111827;
+  --color-surface-3: #161f31;
+  --color-line: #1c2536;
+  --color-line-strong: #27324a;
+
+  /* ---- Brand ---- */
+  --color-brand-50: #eef2ff;
+  --color-brand-100: #e0e7ff;
+  --color-brand-800: #3730a3;
+  --color-brand-900: #312e81;
+  --color-brand-200: #c7d2fe;
+  --color-brand-300: #a5b4fc;
+  --color-brand-400: #818cf8;
+  --color-brand-500: #6366f1;
+  --color-brand-600: #4f46e5;
+  --color-brand-700: #4338ca;
+
+  /* ---- Accent (cyan, used sparingly) ---- */
+  --color-accent-200: #a5f3fc;
+  --color-accent-300: #67e8f9;
+  --color-accent-600: #0891b2;
+  --color-accent-400: #22d3ee;
+  --color-accent-500: #06b6d4;
+
+  /* ---- Semantic ---- */
+  --color-success: #10b981;
+  --color-success-dim: #064e3b;
+  --color-warning: #f59e0b;
+  --color-warning-dim: #78350f;
+  --color-danger: #ef4444;
+  --color-danger-dim: #7f1d1d;
+  --color-info: #3b82f6;
+
+  /* ---- Text ---- */
+  --color-ink: #e6edf7;
+  --color-ink-strong: #f8fafc;
+  --color-ink-muted: #94a3b8;
+  --color-ink-faint: #64748b;
+
+  --font-sans: "Inter var", "Inter", ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, "SF Mono",
+    Menlo, Consolas, monospace;
+
+  --radius-card: 0.875rem;
+
+  --shadow-glow: 0 0 0 1px rgba(99, 102, 241, 0.28), 0 12px 40px -12px rgba(79, 70, 229, 0.45);
+  --shadow-panel: 0 1px 0 0 rgba(255, 255, 255, 0.03) inset,
+    0 20px 50px -24px rgba(0, 0, 0, 0.9);
+
+  --animate-pulse-soft: pulse-soft 2.4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  --animate-shimmer: shimmer 2.2s linear infinite;
+  --animate-rise: rise 0.32s cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-fade: fade 0.24s ease-out;
+  --animate-slide-left: slide-left 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes pulse-soft {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.55; transform: scale(0.86); }
+}
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+@keyframes rise {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes slide-left {
+  from { opacity: 0; transform: translateX(14px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+/* ==========================================================================
+   Base
+   ========================================================================== */
+
+@layer base {
+  * {
+    border-color: var(--color-line);
+  }
+
+  html {
+    color-scheme: dark;
+    -webkit-tap-highlight-color: transparent;
+    scrollbar-gutter: stable;
+  }
+
+  body {
+    background-color: var(--color-base);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-feature-settings: "cv02", "cv03", "cv04", "ss01";
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Ambient background field */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background:
+      radial-gradient(900px 500px at 12% -8%, rgba(79, 70, 229, 0.16), transparent 62%),
+      radial-gradient(760px 460px at 92% 4%, rgba(6, 182, 212, 0.09), transparent 60%),
+      radial-gradient(1200px 700px at 50% 108%, rgba(99, 102, 241, 0.06), transparent 65%);
+  }
+
+  ::selection {
+    background: rgba(99, 102, 241, 0.35);
+    color: #fff;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-brand-500);
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
+
+  /* Scrollbars */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: #26314a transparent;
+  }
+  *::-webkit-scrollbar { width: 9px; height: 9px; }
+  *::-webkit-scrollbar-track { background: transparent; }
+  *::-webkit-scrollbar-thumb {
+    background: #26314a;
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+  *::-webkit-scrollbar-thumb:hover { background-color: #34426a; background-clip: content-box; }
+
+  h1, h2, h3, h4, h5 {
+    color: var(--color-ink-strong);
+    letter-spacing: -0.02em;
+    font-weight: 600;
+  }
+
+  /* Numeric alignment in tables/KPIs */
+  .tnum { font-variant-numeric: tabular-nums; }
+}
+
+/* ==========================================================================
+   Utilities
+   ========================================================================== */
+
+@utility panel {
+  background: linear-gradient(180deg, rgba(17, 24, 39, 0.72) 0%, rgba(13, 17, 23, 0.86) 100%);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-panel);
+  backdrop-filter: blur(8px);
+}
+
+@utility panel-flat {
+  background: var(--color-surface);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-card);
+}
+
+@utility hairline {
+  border-color: var(--color-line);
+}
+
+@utility text-gradient {
+  background: linear-gradient(100deg, #f8fafc 0%, #c7d2fe 45%, #67e8f9 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+@utility grid-lines {
+  background-image:
+    linear-gradient(to right, rgba(148, 163, 184, 0.05) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(148, 163, 184, 0.05) 1px, transparent 1px);
+  background-size: 28px 28px;
+}
+
+@utility skeleton {
+  background: linear-gradient(
+    90deg,
+    rgba(148, 163, 184, 0.06) 25%,
+    rgba(148, 163, 184, 0.14) 37%,
+    rgba(148, 163, 184, 0.06) 63%
+  );
+  background-size: 200% 100%;
+  animation: var(--animate-shimmer);
+  border-radius: 6px;
+}
+
+@utility scrollbar-none {
+  scrollbar-width: none;
+  &::-webkit-scrollbar { display: none; }
+}
+
+/* Recharts polish */
+.recharts-cartesian-axis-tick text {
+  fill: #64748b;
+  font-size: 11px;
+}
+.recharts-cartesian-grid line {
+  stroke: rgba(148, 163, 184, 0.09);
+}
+.recharts-curve.recharts-tooltip-cursor {
+  stroke: rgba(129, 140, 248, 0.4);
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

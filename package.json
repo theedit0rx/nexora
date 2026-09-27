@@ -1,0 +1,43 @@
+{
+  "name": "nexora",
+  "version": "1.0.0",
+  "private": true,
+  "description": "NEXORA — Autonomous Digital Agency OS. Find. Build. Sell. Deliver. Automatically.",
+  "author": "Sajid Raza",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "lint": "next lint",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "seed:demo": "node --experimental-strip-types scripts/seed-demo.mjs",
+    "reset:demo": "node scripts/reset-demo.mjs"
+  },
+  "dependencies": {
+    "@supabase/ssr": "0.12.7",
+    "@supabase/supabase-js": "2.117.2",
+    "clsx": "2.1.1",
+    "date-fns": "4.4.0",
+    "framer-motion": "13.4.4",
+    "jose": "6.2.12",
+    "lucide-react": "1.48.0",
+    "next": "15.5.26",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "recharts": "3.10.1",
+    "tailwind-merge": "3.7.0",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "4.3.3",
+    "@types/node": "22.20.4",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.1.1",
+    "tailwindcss": "4.3.3",
+    "typescript": "5.9.3",
+    "vitest": "3.2.7"
+  }
+}
