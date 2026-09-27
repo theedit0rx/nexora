@@ -324,7 +324,7 @@ export function SettingsForm({
                   onChange={(e) => set("ai.provider", e.target.value)}
                   className="h-9 w-full rounded-lg border border-line bg-surface-2/60 px-2.5 text-[13px] text-ink focus:border-brand-500/70 focus:outline-none"
                 >
-                  {["local", "openai", "anthropic", "groq", "gemini"].map((p) => (
+                  {["local", "openai", "anthropic", "google", "openrouter", "gateway"].map((p) => (
                     <option key={p} value={p}>
                       {p}
                     </option>

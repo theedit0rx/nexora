@@ -1,4 +1,5 @@
 import { tenantById } from "../db/tenant";
+import { classifySalesIntent } from "../ai/sales-intent";
 import { join } from "node:path";
 import { db, newId, slugify } from "../db";
 import {
@@ -381,7 +382,11 @@ export async function salesHandleInbound(
       if (!conversation) throw new Error(`Conversation ${conversationId} not found`);
 
       await markAgentWorking(organizationId, "sales", task.id, "Classifying inbound message");
-      const { intent, confidence } = classifyMessage(message.body);
+      if (message.conversationId !== conversation.id) throw new Error("Message does not belong to this conversation");
+      const aiSettings = await db.findOne("settings", { organizationId });
+      if (!aiSettings) throw new Error("Workspace AI settings missing");
+      const classification = await classifySalesIntent(message.body, aiSettings.ai, () => classifyMessage(message.body));
+      const { intent, confidence } = classification.data;
 
       const updated = await db.update("messages", messageId, {
         intent,
@@ -455,7 +460,11 @@ export async function salesHandleInbound(
       }
       await markAgentIdle(organizationId, "sales");
 
-      return { intent, confidence, suggestedReply: updated.suggestedReply };
+      return { intent, confidence, suggestedReply: updated.suggestedReply,
+        aiProvider: classification.provider, aiModel: classification.model,
+        fromFallback: classification.fromFallback, aiError: classification.error,
+        __tokensIn: classification.usage.tokensIn, __tokensOut: classification.usage.tokensOut,
+        __costUsd: classification.usage.costUsd };
     },
     { entityType: "conversation", entityId: conversationId, input: { conversationId, messageId } },
   );

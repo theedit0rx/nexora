@@ -135,11 +135,11 @@ abstract class HttpProvider implements AIProvider {
       method: "POST",
       headers: { "content-type": "application/json", ...req.headers },
       body: JSON.stringify(req.body),
-      signal: options.signal,
+      signal: options.signal ? AbortSignal.any([options.signal, AbortSignal.timeout(20000)]) : AbortSignal.timeout(20000),
+      redirect: "error",
     });
     if (!res.ok) {
-      const body = await res.text().catch(() => "");
-      throw new Error(`${this.key} API ${res.status}: ${body.slice(0, 300)}`);
+      throw new Error(`${this.key} API returned HTTP ${res.status}`);
     }
     const json = (await res.json()) as unknown;
     const parsed = this.parseResponse(json);
@@ -207,7 +207,7 @@ class OpenRouterProvider extends OpenAIProvider {
 class GatewayProvider extends OpenAIProvider {
   override readonly key: string = "gateway";
   constructor(apiKey: string, model: string) {
-    super(apiKey, model, process.env.AI_GATEWAY_BASE_URL ?? "https://ai-gateway.vercel.sh/v1");
+    super(apiKey, model, (process.env.AI_GATEWAY_BASE_URL ?? "https://ai-gateway.vercel.sh/v1").replace(/\/+$/, ""));
   }
 }
 
@@ -306,12 +306,9 @@ class LocalProvider implements AIProvider {
 
 /* -------------------------------------------------------------- registry --- */
 
-const cache = new Map<string, AIProvider>();
+
 
 export function getProvider(key: string, model?: string): AIProvider {
-  const cacheKey = `${key}:${model ?? ""}`;
-  const hit = cache.get(cacheKey);
-  if (hit) return hit;
 
   let provider: AIProvider;
   switch (key) {
@@ -345,13 +342,12 @@ export function getProvider(key: string, model?: string): AIProvider {
     }
     case "gateway": {
       const apiKey = process.env.AI_GATEWAY_API_KEY;
-      provider = apiKey ? new GatewayProvider(apiKey, model ?? "gpt-4o-mini") : new LocalProvider();
+      provider = apiKey ? new GatewayProvider(apiKey, model ?? process.env.AI_GATEWAY_MODEL ?? "openai/gpt-4o-mini") : new LocalProvider();
       break;
     }
     default:
       provider = new LocalProvider();
   }
-  cache.set(cacheKey, provider);
   return provider;
 }
 
@@ -377,7 +373,7 @@ export function listProviders(): ProviderStatus[] {
     return {
       key: d.key,
       label: d.label,
-      available: provider.available && provider.key !== "local" ? hasAnyEnv(d.envVars) : provider.key === "local",
+      available: d.key === "local" || (provider.key === d.key && provider.available && hasAnyEnv(d.envVars)),
       model: provider.model,
       envVars: d.envVars,
     };
@@ -402,6 +398,7 @@ export interface StructuredOptions<T extends z.ZodType> {
   maxTokens?: number;
   /** Skip the model entirely and use the deterministic engine. */
   offline?: boolean;
+  allowFallback?: boolean;
 }
 
 export async function generateStructured<T extends z.ZodType>(
@@ -410,6 +407,7 @@ export async function generateStructured<T extends z.ZodType>(
   const key = opts.provider ?? "local";
   const provider = getProvider(key, opts.model);
 
+  if (!opts.offline && key !== "local" && provider.key === "local" && opts.allowFallback === false) throw new Error("Selected AI provider is not configured");
   if (opts.offline || provider.key === "local") {
     return {
       data: opts.fallback(),
@@ -430,6 +428,7 @@ export async function generateStructured<T extends z.ZodType>(
     const parsed = extractJson(text);
     const validated = opts.schema.safeParse(parsed);
     if (!validated.success) {
+      if (opts.allowFallback === false) throw new Error("AI response failed schema validation");
       return {
         data: opts.fallback(),
         provider: provider.key,
@@ -450,6 +449,7 @@ export async function generateStructured<T extends z.ZodType>(
       fromFallback: false,
     };
   } catch (err) {
+    if (opts.allowFallback === false) throw err;
     return {
       data: opts.fallback(),
       provider: provider.key,
