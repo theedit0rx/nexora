@@ -1,3 +1,4 @@
+import { tenantById } from "../db/tenant";
 import { db, newId } from "../db";
 import { nowIso, type Lead, type PipelineStage } from "../db/schema";
 import { bus, logActivity, notify } from "../events/bus";
@@ -57,20 +58,21 @@ export async function runPipeline(
   leadId: string,
   opts: PipelineOptions = {},
 ): Promise<{ leadId: string; results: StageResult[]; completed: boolean }> {
-  const settings = await getSettings(organizationId);
+  if (!(await tenantById(organizationId, "leads", leadId))) throw new Error("Lead not found");
   const trigger = opts.trigger ?? "MANUAL";
   const stages = opts.stages ?? STAGE_ORDER;
   const results: StageResult[] = [];
 
   for (const stage of stages) {
+    const settings = await getSettings(organizationId);
     const gate = stageGate(stage, settings);
     if (!gate.allowed) {
       results.push({ stage, ok: false, skipped: true, reason: gate.reason });
-      continue;
+      break;
     }
     if (!(await isAgentAvailable(organizationId, stageAgent(stage)))) {
       results.push({ stage, ok: false, skipped: true, reason: `${stageAgent(stage)} agent is paused` });
-      continue;
+      break;
     }
 
     try {
@@ -100,8 +102,7 @@ export async function runPipeline(
     }
   }
 
-  const failed = results.find((r) => !r.ok && !r.skipped);
-  return { leadId, results, completed: !failed };
+  return { leadId, results, completed: stages.length > 0 && results.length === stages.length && results.every((r) => r.ok) };
 }
 
 function stageAgent(stage: StageName) {
@@ -172,7 +173,7 @@ async function runStage(
   resume: boolean,
 ): Promise<Record<string, unknown> | null> {
   const lead = await db.byId("leads", leadId);
-  if (!lead) throw new Error(`Lead ${leadId} not found`);
+  if (!lead || lead.organizationId !== organizationId) throw new Error(`Lead ${leadId} not found`);
 
   switch (stage) {
     case "research": {
@@ -209,6 +210,7 @@ async function runStage(
       if (!demo) throw new Error("No demo site to QA — run the demo stage first.");
       const r = await qaRun(organizationId, "DEMO", demo.id, trigger);
       if (!r.ok) throw new Error(r.error);
+      if (r.value.verdict === "FAIL") throw new Error("QA failed. Resolve the reported issues before deployment.");
       return { verdict: r.value.verdict, score: r.value.score, issues: r.value.issues };
     }
     case "deploy": {
@@ -216,6 +218,7 @@ async function runStage(
       if (!demo) throw new Error("No demo site to deploy — run the demo stage first.");
       const r = await deployerDeploy(organizationId, "DEMO", demo.id, "PREVIEW", trigger);
       if (!r.ok) throw new Error(r.error);
+      if (r.value.state !== "READY") throw new Error("Deployment is not ready; wait for provider confirmation before outreach.");
       return { deploymentId: r.value.deploymentId, url: r.value.url };
     }
     case "outreach": {
@@ -298,7 +301,7 @@ export async function supervisorReact(
     case "lead.discovered": {
       if (!settings.automation.automaticResearch) return { handled: false, reason: "auto research off" };
       const lead = payload.leadId ? await db.byId("leads", payload.leadId as string) : null;
-      if (!lead) return { handled: false };
+      if (!lead || lead.organizationId !== organizationId) return { handled: false };
       const task = await createTask({
         organizationId,
         agentKey: "supervisor",

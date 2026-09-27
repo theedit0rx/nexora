@@ -36,7 +36,7 @@ export default async function LoginPage() {
 
         <p className="mt-6 text-center text-[11px] leading-relaxed text-ink-faint">
           NEXORA runs entirely in Demo Mode without any API keys. Connect Supabase, an AI provider,
-          lead sources, email, GitHub and Vercel from Settings when you're ready.
+          lead sources, email, GitHub and Vercel from Settings when you&apos;re ready.
         </p>
       </div>
     </main>

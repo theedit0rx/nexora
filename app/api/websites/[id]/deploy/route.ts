@@ -16,9 +16,11 @@ export const POST = handler(async (ctx, req, params) => {
   if (demo && demo.organizationId !== ctx.session.organizationId) return fail("Website not found", 404);
   if (build && build.organizationId !== ctx.session.organizationId) return fail("Website not found", 404);
 
-  if (body.runQa !== false) {
+  if (!["PREVIEW", "PRODUCTION"].includes(kind)) return fail("Invalid deployment kind", 400);
+  {
     const qa = await qaRun(ctx.session.organizationId, targetType, targetId, "MANUAL");
-    if (qa.ok && qa.value.verdict === "FAIL") {
+    if (!qa.ok) return fail(qa.error, 409);
+    if (qa.value.verdict === "FAIL") {
       return json({ ok: false, error: "QA failed — fix the blocking issues before deploying.", qa: qa.value }, 409);
     }
   }

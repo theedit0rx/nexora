@@ -209,7 +209,7 @@ export function CommandPalette({
         run: () => router.push("/settings"),
       },
     ],
-    [router, autonomyPaused, onToggleAutonomy],
+    [router, autonomyPaused, onToggleAutonomy, onToast],
   );
 
   const filtered = useMemo(() => {

@@ -26,6 +26,7 @@ export interface GenerateSiteInput {
   pagePlan: Record<string, string[]>;
   demo: boolean;
   outputRoot: string;
+  baseUrl?: string;
 }
 
 const PAGE_TITLES: Record<string, (b: SiteBusiness) => string> = {
@@ -66,7 +67,7 @@ function head(ctx: ComponentContext, pageKey: string, baseUrl: string): string {
   const b = ctx.business;
   const title = (PAGE_TITLES[pageKey] ?? PAGE_TITLES.index!)(b);
   const description = (PAGE_DESCRIPTIONS[pageKey] ?? PAGE_DESCRIPTIONS.index!)(b);
-  const canonical = `${baseUrl}/${pageKey === "index" ? "" : pageKey + ".html"}`;
+  const canonical = baseUrl ? `${baseUrl.replace(/\/$/, "")}/${pageKey === "index" ? "" : pageKey + ".html"}` : "";
   const favicon = `data:image/svg+xml,${encodeURIComponent(
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="${ctx.theme.primary}"/><text x="32" y="42" font-family="sans-serif" font-size="32" font-weight="700" fill="white" text-anchor="middle">${esc(
       b.name.slice(0, 1).toUpperCase(),
@@ -103,19 +104,19 @@ function head(ctx: ComponentContext, pageKey: string, baseUrl: string): string {
 <meta name="description" content="${esc(description.slice(0, 300))}" />
 <meta name="keywords" content="${esc(b.keywords.join(", "))}" />
 <meta name="theme-color" content="${ctx.theme.primary}" />
-<link rel="canonical" href="${canonical}" />
+${canonical ? `<link rel="canonical" href="${esc(canonical)}" />` : '<meta name="robots" content="noindex,nofollow" />'}
 <link rel="icon" href="${favicon}" />
 <meta property="og:type" content="website" />
 <meta property="og:title" content="${esc(title)}" />
 <meta property="og:description" content="${esc(description.slice(0, 300))}" />
 <meta property="og:site_name" content="${esc(b.name)}" />
-<meta property="og:url" content="${canonical}" />
+${canonical ? `<meta property="og:url" content="${esc(canonical)}" />` : ""}
 <meta name="twitter:card" content="summary_large_image" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 ${googleFontsLink(ctx.theme) ? `<link rel="stylesheet" href="${googleFontsLink(ctx.theme)}" />` : ""}
 <link rel="stylesheet" href="styles.css" />
-<script type="application/ld+json">${JSON.stringify(jsonLd)}</script>
+<script type="application/ld+json">${JSON.stringify(jsonLd).replace(/</g, "\\u003c")}</script>
 </head>`;
 }
 
@@ -132,6 +133,7 @@ function localBusinessType(category: string): string {
 }
 
 export function generateSiteFiles(input: GenerateSiteInput): GenerationResult {
+  if (input.baseUrl && !/^https?:\/\//.test(input.baseUrl)) throw new Error("Site base URL must be absolute");
   const ctx: ComponentContext = {
     business: input.business,
     theme: input.theme,
@@ -160,12 +162,14 @@ export function generateSiteFiles(input: GenerateSiteInput): GenerationResult {
       pageKey === "index"
         ? ""
         : `<h1 class="nx-h1 nx-page-title">${esc(pageH1(pageKey, input.business))}</h1>`;
-    const html = `${head(pageCtx, pageKey, "/")}
+    const html = `${head(pageCtx, pageKey, input.baseUrl ?? "")}
 <body>
 <a class="nx-skip" href="#main">Skip to content</a>
+${input.demo ? '<aside role="note">Design preview — suggested content requires business approval.</aside>' : ""}
+<main id="main">
 ${heading}
 ${body}
-<main id="main" hidden></main>
+</main>
 </body>
 </html>
 `;
@@ -176,14 +180,14 @@ ${body}
 
   files.push({
     path: "robots.txt",
-    content: `User-agent: *\nAllow: /\nSitemap: /sitemap.xml\n`,
+    content: input.baseUrl ? `User-agent: *\nAllow: /\nSitemap: ${input.baseUrl.replace(/\/$/, "")}/sitemap.xml\n` : `User-agent: *\nDisallow: /\n`,
   });
   files.push({
     path: "sitemap.xml",
     content: `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-${pages
-  .map((p) => `  <url><loc>/${p}</loc><lastmod>${new Date().toISOString().slice(0, 10)}</lastmod></url>`)
+${(input.baseUrl ? pages : [])
+  .map((p) => `  <url><loc>${esc(input.baseUrl!.replace(/\/$/, ""))}/${p}</loc><lastmod>${new Date().toISOString().slice(0, 10)}</lastmod></url>`)
   .join("\n")}
 </urlset>
 `,

@@ -130,7 +130,7 @@ export async function login(email: string, password: string): Promise<LoginResul
   if (!normalized || !password) return { ok: false, error: "Email and password are required." };
 
   // Supabase Auth path
-  if (process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+  if (process.env.NEXORA_AUTH_PROVIDER === "supabase") {
     try {
       const { createSupabaseBrowser } = await import("../db/supabase-adapter");
       const client = createSupabaseBrowser();
@@ -205,6 +205,7 @@ export async function signup(input: {
   fullName: string;
   organizationName: string;
 }): Promise<LoginResult> {
+  if (process.env.NEXORA_AUTH_PROVIDER === "supabase") return { ok: false, error: "Create and verify the account through your Supabase authentication flow." };
   const email = input.email.trim().toLowerCase();
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return { ok: false, error: "Enter a valid email address." };
   if (input.password.length < 8) return { ok: false, error: "Password must be at least 8 characters." };

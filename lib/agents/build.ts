@@ -448,6 +448,8 @@ export async function deployerDeploy(
         projectId = build.projectId;
       }
 
+      const qa = (await db.find("qa_runs", { organizationId, targetType, targetId })).at(-1);
+      if (!qa || qa.verdict === "FAIL") throw new Error("A passing QA run is required before deployment");
       await markAgentWorking(organizationId, "deployer", task.id, `Deploying ${name}`);
       const provider = getDeploymentProvider(kind);
       const files = readDirFiles(outputDir);
@@ -514,6 +516,7 @@ export async function deployerDeploy(
       }
       await markAgentIdle(organizationId, "deployer");
 
+      if (!res.ok) throw new Error(res.error ?? "Deployment failed");
       return { deploymentId: deployment.id, url: deployment.url, provider: provider.key, state: deployment.state };
     },
     {

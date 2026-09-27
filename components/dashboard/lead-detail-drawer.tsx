@@ -198,7 +198,7 @@ export function RunPipelineButton({
               setResult(json.error ?? "Pipeline failed");
               return;
             }
-            const failed = json.results?.find((r) => !r.ok && !r.skipped);
+            const failed = json.results?.find((r) => !r.ok);
             const skipped = json.results?.filter((r) => r.skipped).length ?? 0;
             setResult(
               failed

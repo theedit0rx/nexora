@@ -24,6 +24,7 @@ export function middleware(request: NextRequest) {
 
   const token = request.cookies.get("nexora_session")?.value;
   if (!token) {
+    if (pathname.startsWith("/api/")) return NextResponse.json({ ok: false, error: "Not authenticated" }, { status: 401 });
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     url.searchParams.set("next", pathname);

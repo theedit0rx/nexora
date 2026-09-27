@@ -13,6 +13,9 @@ export const POST = handler(async (ctx, req, params) => {
   const body = await readBody<{ status?: ProposalStatus }>(req);
   if (!body.status || !ALLOWED.includes(body.status)) return fail("Invalid proposal status", 400);
 
+  if (body.status === "ACCEPTED" && proposal.status !== "SENT" && proposal.status !== "ACCEPTED") return fail("Send the proposal before recording acceptance", 409);
+  if (["ACCEPTED", "REJECTED", "EXPIRED"].includes(proposal.status) && body.status !== proposal.status) return fail("A finalized proposal cannot be changed", 409);
+
   const updated = await db.update("proposals", proposal.id, {
     status: body.status,
     sentAt: body.status === "SENT" ? nowIso() : proposal.sentAt,
@@ -43,14 +46,14 @@ export const POST = handler(async (ctx, req, params) => {
 
 async function convertToClient(organizationId: string, proposalId: string) {
   const proposal = await db.byId("proposals", proposalId);
-  if (!proposal || !proposal.leadId) return;
-  const existing = await db.findOne("clients", { leadId: proposal.leadId });
+  if (!proposal || proposal.organizationId !== organizationId || !proposal.leadId) return;
+  const existing = await db.findOne("clients", { organizationId, leadId: proposal.leadId });
   if (existing) return;
 
   const lead = await db.byId("leads", proposal.leadId);
-  if (!lead) return;
+  if (!lead || lead.organizationId !== organizationId) return;
   const business = await db.byId("businesses", lead.businessId);
-  if (!business) return;
+  if (!business || business.organizationId !== organizationId) return;
 
   const { newId, slugify } = await import("@/lib/db");
   const client = await db.insert("clients", {
@@ -59,9 +62,9 @@ async function convertToClient(organizationId: string, proposalId: string) {
     leadId: lead.id,
     businessId: business.id,
     name: business.name,
-    slug: slugify(business.name),
+    slug: `${organizationId}-${slugify(business.name)}`,
     status: "ONBOARDING",
-    lifetimeValue: proposal.total,
+    lifetimeValue: 0,
     monthlyRecurring: 0,
     contractValue: proposal.total,
     onboardingProgress: 0,
@@ -119,7 +122,7 @@ async function convertToClient(organizationId: string, proposalId: string) {
     proposalId: proposal.id,
     strategyId: null,
     name: `${business.name} website`,
-    slug: `${slugify(business.name)}-site`,
+    slug: `${organizationId}-${slugify(business.name)}-site`,
     serviceKey: proposal.title.includes("Ecommerce") ? "ecommerce" : "business-website",
     stage: "Planning",
     progress: 5,
@@ -142,7 +145,7 @@ async function convertToClient(organizationId: string, proposalId: string) {
     kind: "PROJECT_FEE",
     amount: proposal.total,
     currency: proposal.currency,
-    status: "INVOICED",
+    status: "PENDING",
     description: `Proposal ${proposal.number} accepted`,
     occurredAt: nowIso(),
     createdAt: nowIso(),
